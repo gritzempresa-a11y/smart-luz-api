@@ -20,12 +20,16 @@ import jwt
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
-MONGO_URL = os.getenv("MONGO_URL")
+# 👇 SUPORTE PARA RAILWAY
+MONGO_URL = os.getenv("MONGO_URL") or os.getenv("MONGODB_URL")
 DB_NAME = os.getenv("DB_NAME", "smartluz")
-JWT_SECRET = os.getenv("JWT_SECRET", "super-secret-key")
+JWT_SECRET = os.getenv("JWT_SECRET")
 
 if not MONGO_URL:
-    raise ValueError("MONGO_URL não configurado")
+    raise ValueError("Mongo não configurado nas variáveis do Railway")
+
+if not JWT_SECRET:
+    raise ValueError("JWT_SECRET não configurado nas variáveis do Railway")
 
 # ==============================
 # DATABASE
@@ -92,7 +96,6 @@ class Diagnosis(BaseModel):
     recommendations: List[str]
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-
 # ==============================
 # SECURITY
 # ==============================
@@ -125,9 +128,10 @@ async def get_current_user(
         token = credentials.credentials
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         return payload.get("user_id")
-    except:
+    except jwt.ExpiredSignatureError:
         return None
-
+    except jwt.InvalidTokenError:
+        return None
 
 # ==============================
 # CALCULATION
@@ -219,7 +223,6 @@ def calculate_diagnosis(responses: QuestionnaireResponse):
         "potential_savings_reais": round(potential_savings_reais, 2),
         "recommendations": recommendations,
     }
-
 
 # ==============================
 # ROUTES
@@ -322,11 +325,9 @@ app.add_middleware(
 # ==============================
 
 logging.basicConfig(level=logging.INFO)
-
 logger = logging.getLogger(__name__)
 
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
-
